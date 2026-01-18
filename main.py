@@ -48,8 +48,8 @@ Bot = Client(
 
 @Bot.on_message(filters.private & filters.command("start"))
 async def start(bot, update):
-    # Professional Guardian Bot Image
-    welcome_pic = "https://graph.org/file/e642337d10e5446078e63.jpg" 
+    # Stable Image Link
+    welcome_pic = "https://telegra.ph/file/bc0d8e8784d009d7249a2.jpg" 
     
     welcome_text = (
         f"**Namaste {update.from_user.first_name}! 👋**\n\n"
@@ -63,10 +63,7 @@ async def start(bot, update):
         "Muze apne group mein add karein aur **Admin** banayein!"
     )
 
-    await update.reply_photo(
-        photo=welcome_pic,
-        caption=welcome_text,
-        reply_markup=InlineKeyboardMarkup([
+    buttons = InlineKeyboardMarkup([
             [
                 InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew"),
                 InlineKeyboardButton("👥 Group", url="https://t.me/SENPAI_GC")
@@ -76,7 +73,20 @@ async def start(bot, update):
                 InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/GOJO63970")
             ]
         ])
-    )
+
+    try:
+        # Image ke saath try karega
+        await update.reply_photo(
+            photo=welcome_pic,
+            caption=welcome_text,
+            reply_markup=buttons
+        )
+    except Exception:
+        # Agar image link block ho to sirf text bhej dega
+        await update.reply_text(
+            text=welcome_text,
+            reply_markup=buttons
+        )
 
 @Bot.on_callback_query(filters.regex("help_cmds"))
 async def help_callback(bot, query):
@@ -94,9 +104,9 @@ async def help_callback(bot, query):
 
 @Bot.on_callback_query(filters.regex("back_start"))
 async def back_callback(bot, query):
-    # Wapas original message par jaane ke liye
-    await start(bot, query.message)
+    # Wapas start par jaane ke liye
     await query.message.delete()
+    await start(bot, query.message)
 
 # --- 4. IMAGE & TEXT FILTERS ---
 
@@ -125,7 +135,7 @@ async def image(bot, message):
                     caption=f"⚠️ **NSFW Alert!**\n\nUser **{name}** ne ek nude photo bheji thi.\n**Porn Score:** {porn}%", 
                     has_spoiler=True
                 )
-        os.remove(x) # Clean up downloaded file
+        os.remove(x) # File delete karega taaki space na bhare
     except Exception as e:
         print(f"Error in image filter: {e}")
 
@@ -157,7 +167,7 @@ async def slang(bot, message):
 
 # --- 5. RUN BOT ---
 if __name__ == "__main__":
-    keep_alive() # Starts Flask server in background
+    keep_alive() # Starts Flask server
     print("Bot is starting...")
     Bot.run()
     

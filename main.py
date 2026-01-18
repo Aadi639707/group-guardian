@@ -4,6 +4,7 @@ import requests
 import re
 import config 
 import os
+import asyncio
 from flask import Flask
 from threading import Thread
 
@@ -15,7 +16,6 @@ def home():
     return "Group Guardian Bot is active!"
 
 def run_flask():
-    # Render automatically sets the PORT
     port = int(os.environ.get("PORT", 10000))
     app.run(host='0.0.0.0', port=port)
 
@@ -29,9 +29,9 @@ url = "https://api.safone.me/nsfw"
 SPOILER = config.SPOILER_MODE
 slangf = 'slang_words.txt'
 
-# Load Slang Words
+# Load Slang Words (Hindi + English)
 try:
-    with open(slangf, 'r') as f:
+    with open(slangf, 'r', encoding='utf-8') as f:
         slang_words = set(line.strip().lower() for line in f)
 except FileNotFoundError:
     slang_words = set()
@@ -44,77 +44,62 @@ Bot = Client(
     api_hash=config.API_HASH
 )
 
-# --- 3. COMMAND HANDLERS ---
+# --- 3. AUTO-DELETE HELPER ---
+async def auto_delete(message, delay=60):
+    await asyncio.sleep(delay)
+    try:
+        await message.delete()
+    except Exception:
+        pass
 
+# --- 4. START COMMAND ---
 @Bot.on_message(filters.private & filters.command("start"))
 async def start(bot, update):
-    # Professional Guardian Image
     welcome_pic = "https://telegra.ph/file/bc0d8e8784d009d7249a2.jpg" 
-    
     welcome_text = (
         f"**Greetings {update.from_user.first_name}! 👋**\n\n"
-        "I am the **Group Guardian**, your advanced security assistant. "
-        "My mission is to keep your groups clean and safe from inappropriate language and NSFW content.\n\n"
-        "**💡 Key Features:**\n"
-        "🛡️ **Slang Detection:** I instantly detect and remove messages containing vulgar language.\n"
-        "🔞 **NSFW Filter:** Every photo is scanned. Adult or pornographic images are removed immediately.\n"
-        "👮‍♂️ **Admin Immunity:** Administrators are exempt from these filters.\n\n"
-        "**How to Use?**\n"
-        "Add me to your group and grant me **Admin Rights** to start protecting your community!"
+        "I am the **Group Guardian**. I protect your community from NSFW content, "
+        "multilingual abusive language (Hindi/English), and edited messages.\n\n"
+        "**💡 Features:**\n"
+        "🛡️ **Slang & NSFW Filter:** High-speed detection.\n"
+        "🚫 **Edit Policy:** Edited messages are strictly prohibited.\n"
+        "⏳ **Auto-Clean:** Notifications self-destruct in 60 seconds."
     )
-
     buttons = InlineKeyboardMarkup([
-            [
-                InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew"),
-                InlineKeyboardButton("👥 Group", url="https://t.me/SENPAI_GC")
-            ],
-            [
-                InlineKeyboardButton("🆘 Help", callback_data="help_cmds"),
-                InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/GOJO63970")
-            ]
-        ])
-
+        [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
+         InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")],
+        [InlineKeyboardButton("🆘 Help", callback_data="help_cmds"),
+         InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/GOJO63970")]
+    ])
     try:
-        await update.reply_photo(
-            photo=welcome_pic,
-            caption=welcome_text,
-            reply_markup=buttons
+        await update.reply_photo(photo=welcome_pic, caption=welcome_text, reply_markup=buttons)
+    except:
+        await update.reply_text(text=welcome_text, reply_markup=buttons)
+
+# --- 5. EDIT TRACKER (ADMINS INCLUDED) ---
+@Bot.on_edited_message(filters.group)
+async def handle_edited(bot, message):
+    try:
+        await message.delete()
+        reply = await message.reply(
+            f"Security Bot 📢\n"
+            f"🚫 Hey {message.from_user.mention}, your message was removed.\n\n"
+            f"**Reason:** Edited message detected.\n"
+            f"Please keep the chat respectful.\n\n"
+            f"Note: This alert will delete in 60s.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
+                 InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")]
+            ])
         )
-    except Exception:
-        # Fallback to text if image fails
-        await update.reply_text(
-            text=welcome_text,
-            reply_markup=buttons
-        )
+        asyncio.create_task(auto_delete(reply))
+    except:
+        pass
 
-@Bot.on_callback_query(filters.regex("help_cmds"))
-async def help_callback(bot, query):
-    help_text = (
-        "**📜 User Manual & Commands:**\n\n"
-        "• `/start` - Initialize the bot.\n"
-        "• Simply add the bot to your group and promote it to Admin.\n"
-        "• The bot will automatically monitor all text and media.\n\n"
-        "**Note:** Admin messages are never deleted or censored."
-    )
-    await query.message.edit_caption(
-        caption=help_text,
-        reply_markup=InlineKeyboardMarkup([[InlineKeyboardButton("⬅️ Back", callback_data="back_start")]])
-    )
-
-@Bot.on_callback_query(filters.regex("back_start"))
-async def back_callback(bot, query):
-    await query.message.delete()
-    await start(bot, query.message)
-
-# --- 4. IMAGE & TEXT FILTERS ---
-
+# --- 6. MULTILINGUAL SLANG & IMAGE FILTERS ---
 @Bot.on_message(filters.group & filters.photo)
 async def image(bot, message):
     try:
-        sender = await bot.get_chat_member(message.chat.id, message.from_user.id)
-        if sender.privileges: 
-            return
-            
         x = await message.download()
         with open(x, "rb") as photo_file:
             files = {"image": photo_file}
@@ -122,51 +107,57 @@ async def image(bot, message):
             data = roi.json()
             
         nsfw = data.get("data", {}).get("is_nsfw", False)
-        porn = data.get("data", {}).get("porn", 0)
-        
         if nsfw:
-            name = message.from_user.first_name
             await message.delete()
-            if SPOILER:
-                await message.reply_photo(
-                    x, 
-                    caption=f"⚠️ **NSFW Alert!**\n\nUser **{name}** sent an inappropriate image.\n**Porn Score:** {porn}%", 
-                    has_spoiler=True
-                )
+            reply = await message.reply(
+                f"Security Bot 📢\n"
+                f"🚫 Hey {message.from_user.mention}, your message was removed.\n\n"
+                f"**Reason:** NSFW Content Detected.\n"
+                f"Please keep the chat respectful.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
+                     InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")]
+                ])
+            )
+            asyncio.create_task(auto_delete(reply))
         if os.path.exists(x):
             os.remove(x) 
-    except Exception as e:
-        print(f"Image filtering error: {e}")
+    except:
+        pass
 
 @Bot.on_message(filters.group & filters.text)
 async def slang(bot, message):
     try:
-        sender = await bot.get_chat_member(message.chat.id, message.from_user.id)
-        if sender.privileges:
-            return
-
         sentence = message.text
-        sent = re.sub(r'\W+', ' ', sentence)
+        # Cleaning text to support Hindi and English better
+        clean_text = re.sub(r'[^\w\s]', ' ', sentence).lower()
         isslang = False
-        words = sent.split()
+        words = clean_text.split()
         
         for word in words:
-            if word.lower() in slang_words:
+            if word in slang_words:
                 isslang = True
-                sentence = sentence.replace(word, f"||{word}||")
+                sentence = re.compile(re.escape(word), re.IGNORECASE).sub("****", sentence)
         
         if isslang:
-            name = message.from_user.first_name
             await message.delete()
-            msgtxt = f"🚫 **Bad Language Detected!**\n\n{name}, your message was deleted for containing prohibited words.\n\n**Censored:** {sentence}"
-            if SPOILER:
-                await message.reply(msgtxt)
-    except Exception as e:
-        print(f"Text filtering error: {e}")
+            reply = await message.reply(
+                f"Security Bot 📢\n"
+                f"🚫 Hey {message.from_user.mention}, your message was removed.\n\n"
+                f"🔍 **Censored:** {sentence}\n\n"
+                f"Please keep the chat respectful.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
+                     InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")]
+                ])
+            )
+            asyncio.create_task(auto_delete(reply))
+    except:
+        pass
 
-# --- 5. EXECUTION ---
+# --- 7. RUN ---
 if __name__ == "__main__":
-    keep_alive() 
+    keep_alive()
     print("Group Guardian Bot is starting...")
     Bot.run()
-                
+    

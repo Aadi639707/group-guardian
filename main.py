@@ -12,7 +12,7 @@ app = Flask(__name__)
 
 @app.route('/')
 def home():
-    return "Group Guardian Bot is running!"
+    return "Group Guardian Bot is active!"
 
 def run_flask():
     # Render automatically sets the PORT
@@ -29,13 +29,13 @@ url = "https://api.safone.me/nsfw"
 SPOILER = config.SPOILER_MODE
 slangf = 'slang_words.txt'
 
-# Slang words file read karna
+# Load Slang Words
 try:
     with open(slangf, 'r') as f:
         slang_words = set(line.strip().lower() for line in f)
 except FileNotFoundError:
     slang_words = set()
-    print("Warning: slang_words.txt file nahi mili!")
+    print("Warning: slang_words.txt not found!")
 
 Bot = Client(
     "antinude",
@@ -48,19 +48,19 @@ Bot = Client(
 
 @Bot.on_message(filters.private & filters.command("start"))
 async def start(bot, update):
-    # Stable Image Link
+    # Professional Guardian Image
     welcome_pic = "https://telegra.ph/file/bc0d8e8784d009d7249a2.jpg" 
     
     welcome_text = (
-        f"**Namaste {update.from_user.first_name}! 👋**\n\n"
-        "Main hoon **Group Guardian**, aapke group ka digital chowkidar. "
-        "Mera kaam aapke group ko gande words aur NSFW (adult) content se saaf rakhna hai.\n\n"
-        "**💡 Main kya kar sakta hoon?**\n"
-        "🛡️ **Slang Detection:** Inappropriate language ko turant delete karta hoon.\n"
-        "🔞 **NSFW Filter:** Har photo ko scan karke adult content hata deta hoon.\n"
-        "👮‍♂️ **Admin Safe:** Admins par mera koi asar nahi hota.\n\n"
-        "**Kaise use karein?**\n"
-        "Muze apne group mein add karein aur **Admin** banayein!"
+        f"**Greetings {update.from_user.first_name}! 👋**\n\n"
+        "I am the **Group Guardian**, your advanced security assistant. "
+        "My mission is to keep your groups clean and safe from inappropriate language and NSFW content.\n\n"
+        "**💡 Key Features:**\n"
+        "🛡️ **Slang Detection:** I instantly detect and remove messages containing vulgar language.\n"
+        "🔞 **NSFW Filter:** Every photo is scanned. Adult or pornographic images are removed immediately.\n"
+        "👮‍♂️ **Admin Immunity:** Administrators are exempt from these filters.\n\n"
+        "**How to Use?**\n"
+        "Add me to your group and grant me **Admin Rights** to start protecting your community!"
     )
 
     buttons = InlineKeyboardMarkup([
@@ -75,14 +75,13 @@ async def start(bot, update):
         ])
 
     try:
-        # Image ke saath try karega
         await update.reply_photo(
             photo=welcome_pic,
             caption=welcome_text,
             reply_markup=buttons
         )
     except Exception:
-        # Agar image link block ho to sirf text bhej dega
+        # Fallback to text if image fails
         await update.reply_text(
             text=welcome_text,
             reply_markup=buttons
@@ -91,11 +90,11 @@ async def start(bot, update):
 @Bot.on_callback_query(filters.regex("help_cmds"))
 async def help_callback(bot, query):
     help_text = (
-        "**📜 All Commands & Usage:**\n\n"
-        "• `/start` - Bot ko start karne ke liye.\n"
-        "• Bas bot ko group mein add karein aur admin banayein.\n"
-        "• Bot automatically saare photos aur texts scan karega.\n\n"
-        "Note: Admin ke messages filter nahi hote."
+        "**📜 User Manual & Commands:**\n\n"
+        "• `/start` - Initialize the bot.\n"
+        "• Simply add the bot to your group and promote it to Admin.\n"
+        "• The bot will automatically monitor all text and media.\n\n"
+        "**Note:** Admin messages are never deleted or censored."
     )
     await query.message.edit_caption(
         caption=help_text,
@@ -104,7 +103,6 @@ async def help_callback(bot, query):
 
 @Bot.on_callback_query(filters.regex("back_start"))
 async def back_callback(bot, query):
-    # Wapas start par jaane ke liye
     await query.message.delete()
     await start(bot, query.message)
 
@@ -114,7 +112,7 @@ async def back_callback(bot, query):
 async def image(bot, message):
     try:
         sender = await bot.get_chat_member(message.chat.id, message.from_user.id)
-        if sender.privileges: # Admin check
+        if sender.privileges: 
             return
             
         x = await message.download()
@@ -132,12 +130,13 @@ async def image(bot, message):
             if SPOILER:
                 await message.reply_photo(
                     x, 
-                    caption=f"⚠️ **NSFW Alert!**\n\nUser **{name}** ne ek nude photo bheji thi.\n**Porn Score:** {porn}%", 
+                    caption=f"⚠️ **NSFW Alert!**\n\nUser **{name}** sent an inappropriate image.\n**Porn Score:** {porn}%", 
                     has_spoiler=True
                 )
-        os.remove(x) # File delete karega taaki space na bhare
+        if os.path.exists(x):
+            os.remove(x) 
     except Exception as e:
-        print(f"Error in image filter: {e}")
+        print(f"Image filtering error: {e}")
 
 @Bot.on_message(filters.group & filters.text)
 async def slang(bot, message):
@@ -159,15 +158,15 @@ async def slang(bot, message):
         if isslang:
             name = message.from_user.first_name
             await message.delete()
-            msgtxt = f"🚫 **Bad Language Detected!**\n\n{name}, aapke message mein galat shabd the.\n\n**Censored:** {sentence}"
+            msgtxt = f"🚫 **Bad Language Detected!**\n\n{name}, your message was deleted for containing prohibited words.\n\n**Censored:** {sentence}"
             if SPOILER:
                 await message.reply(msgtxt)
     except Exception as e:
-        print(f"Error in slang filter: {e}")
+        print(f"Text filtering error: {e}")
 
-# --- 5. RUN BOT ---
+# --- 5. EXECUTION ---
 if __name__ == "__main__":
-    keep_alive() # Starts Flask server
-    print("Bot is starting...")
+    keep_alive() 
+    print("Group Guardian Bot is starting...")
     Bot.run()
-    
+                

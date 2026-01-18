@@ -1,7 +1,27 @@
-from pyrogram import Client,filters
+from pyrogram import Client, filters
 import requests
 import re
 import config 
+import os
+from flask import Flask
+from threading import Thread
+
+# --- FLASK SERVER CODE START ---
+app = Flask(__name__)
+
+@app.route('/')
+def home():
+    return "Bot is alive and running!"
+
+def run():
+    # Render default port 10000 use karta hai
+    port = int(os.environ.get("PORT", 10000))
+    app.run(host='0.0.0.0', port=port)
+
+def keep_alive():
+    t = Thread(target=run)
+    t.start()
+# --- FLASK SERVER CODE END ---
 
 url = "https://api.safone.me/nsfw"
 SPOILER = config.SPOILER_MODE
@@ -80,4 +100,9 @@ async def slang(bot, message):
 
 #--------------------------------------------------------------------------------------------------
 
-Bot.run()
+if __name__ == "__main__":
+    # Flask server ko background mein start karega
+    keep_alive()
+    # Pyrogram Bot ko start karega
+    Bot.run()
+    

@@ -27,8 +27,8 @@ url = "https://api.safone.me/nsfw"
 SPOILER = config.SPOILER_MODE
 slangf = 'slang_words.txt'
 
-# Memory Cache for Reaction Protection
-msg_text_cache = {}
+# Memory Cache for Character Length Protection
+msg_length_cache = {}
 
 try:
     with open(slangf, 'r', encoding='utf-8') as f:
@@ -56,7 +56,7 @@ async def start(bot, update):
     welcome_text = (
         f"**Greetings {update.from_user.first_name}! 👋**\n\n"
         "I am the **Group Guardian**. I protect your community from NSFW, Slang, and Edits.\n\n"
-        "**Note:** Admin messages are also monitored as per your request."
+        "**Smart Edit Filter:** I only delete messages if even a single character is changed!"
     )
     buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
@@ -65,22 +65,28 @@ async def start(bot, update):
     try: await update.reply_photo(photo=welcome_pic, caption=welcome_text, reply_markup=buttons)
     except: await update.reply_text(text=welcome_text, reply_markup=buttons)
 
-# --- 5. EDIT TRACKER (100% REACTION PROOF) ---
+# --- 5. SMART EDIT TRACKER (CHARACTER LENGTH LOGIC) ---
 @Bot.on_edited_message(filters.group)
 async def handle_edited(bot, message):
     msg_id = message.id
-    new_content = message.text or message.caption
+    current_text = message.text or message.caption
+    
+    if not current_text:
+        return
 
-    # Agar reaction aaya hai toh text cache mein match karega
-    if msg_id in msg_text_cache and msg_text_cache[msg_id] == new_content:
-        return # Sirf reaction hai, ignore it
+    current_length = len(current_text)
+
+    # Reaction hone par length same rehti hai, isliye skip karega
+    # Agar user ne 1 word bhi badla toh length change ho jayegi
+    if msg_id in msg_length_cache and msg_length_cache[msg_id] == current_length:
+        return 
 
     try:
         await message.delete()
         reply = await message.reply(
             f"Security Bot 📢\n"
             f"🚫 Hey {message.from_user.mention}, your message was removed.\n\n"
-            f"**Reason:** Edited message detected.\n"
+            f"**Reason:** Message modification detected.\n"
             f"Please keep the chat respectful.",
             reply_markup=InlineKeyboardMarkup([
                 [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true")]
@@ -89,11 +95,13 @@ async def handle_edited(bot, message):
         asyncio.create_task(auto_delete(reply))
     except: pass
 
-# --- 6. MULTILINGUAL SLANG & PHOTO FILTER ---
+# --- 6. MAIN FILTER (NEW MESSAGES) ---
 @Bot.on_message(filters.group & (filters.text | filters.photo))
 async def main_filter(bot, message):
-    # Store message content in cache for reaction check later
-    msg_text_cache[message.id] = message.text or message.caption
+    # Message ki length cache mein store karo
+    content = message.text or message.caption
+    if content:
+        msg_length_cache[message.id] = len(content)
     
     # 1. PHOTO/NSFW FILTER
     if message.photo:
@@ -103,7 +111,7 @@ async def main_filter(bot, message):
                 roi = requests.post(url, files={"image": photo_file})
                 if roi.json().get("data", {}).get("is_nsfw", False):
                     await message.delete()
-                    reply = await message.reply(f"Security Bot 📢\n🚫 Hey {message.from_user.mention}, NSFW is not allowed.")
+                    reply = await message.reply(f"Security Bot 📢\n🚫 NSFW Detected!")
                     asyncio.create_task(auto_delete(reply))
             if os.path.exists(x): os.remove(x)
         except: pass
@@ -116,7 +124,7 @@ async def main_filter(bot, message):
             words = clean_text.split()
             if any(word in slang_words for word in words):
                 await message.delete()
-                reply = await message.reply(f"Security Bot 📢\n🚫 Hey {message.from_user.mention}, bad language detected.")
+                reply = await message.reply(f"Security Bot 📢\n🚫 Bad Language Detected!")
                 asyncio.create_task(auto_delete(reply))
         except: pass
 

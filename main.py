@@ -8,7 +8,7 @@ import asyncio
 from flask import Flask
 from threading import Thread
 
-# --- 1. WEB SERVER FOR RENDER (KEEP ALIVE) ---
+# --- 1. WEB SERVER FOR RENDER ---
 app = Flask(__name__)
 
 @app.route('/')
@@ -34,7 +34,6 @@ try:
         slang_words = set(line.strip().lower() for line in f)
 except FileNotFoundError:
     slang_words = set()
-    print("Warning: slang_words.txt not found!")
 
 Bot = Client(
     "antinude",
@@ -75,12 +74,16 @@ async def start(bot, update):
     except:
         await update.reply_text(text=welcome_text, reply_markup=buttons)
 
-# --- 5. EDIT TRACKER (FIXED: IGNORES REACTIONS) ---
+# --- 5. EDIT TRACKER (ULTIMATE FIX FOR REACTIONS) ---
 @Bot.on_edited_message(filters.group)
 async def handle_edited(bot, message):
-    # Fix: Reaction triggers an edit event, but the 'text' doesn't exist in reaction updates
-    # We only delete if there is actually text/caption being edited.
-    if not message.text and not message.caption:
+    # Check 1: Agar message ke paas text ya caption nahi hai, toh skip (Reaction protection)
+    if not (message.text or message.caption):
+        return
+
+    # Check 2: Pyrogram's edit_date check. Reaction updates usually don't refresh this date
+    # like a manual text edit does.
+    if not message.edit_date:
         return
 
     try:
@@ -166,4 +169,4 @@ if __name__ == "__main__":
     keep_alive()
     print("Group Guardian Bot is starting...")
     Bot.run()
-    
+        

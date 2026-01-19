@@ -29,7 +29,6 @@ url = "https://api.safone.me/nsfw"
 SPOILER = config.SPOILER_MODE
 slangf = 'slang_words.txt'
 
-# Load Slang Words (Hindi + English)
 try:
     with open(slangf, 'r', encoding='utf-8') as f:
         slang_words = set(line.strip().lower() for line in f)
@@ -59,7 +58,7 @@ async def start(bot, update):
     welcome_text = (
         f"**Greetings {update.from_user.first_name}! 👋**\n\n"
         "I am the **Group Guardian**. I protect your community from NSFW content, "
-        "multilingual abusive language (Hindi/English), and edited messages.\n\n"
+        "multilingual abusive language, and edited messages.\n\n"
         "**💡 Features:**\n"
         "🛡️ **Slang & NSFW Filter:** High-speed detection.\n"
         "🚫 **Edit Policy:** Edited messages are strictly prohibited.\n"
@@ -76,26 +75,30 @@ async def start(bot, update):
     except:
         await update.reply_text(text=welcome_text, reply_markup=buttons)
 
-# --- 5. EDIT TRACKER (FIXED: ONLY FOR ACTUAL EDITS) ---
+# --- 5. EDIT TRACKER (FIXED: IGNORES REACTIONS) ---
 @Bot.on_edited_message(filters.group)
 async def handle_edited(bot, message):
-    if message.edit_date: # Extra check for real edit
-        try:
-            await message.delete()
-            reply = await message.reply(
-                f"Security Bot 📢\n"
-                f"🚫 Hey {message.from_user.mention}, your message was removed.\n\n"
-                f"**Reason:** Edited message detected.\n"
-                f"Please keep the chat respectful.\n\n"
-                f"Note: This alert will delete in 60s.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
-                     InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")]
-                ])
-            )
-            asyncio.create_task(auto_delete(reply))
-        except:
-            pass
+    # Fix: Reaction triggers an edit event, but the 'text' doesn't exist in reaction updates
+    # We only delete if there is actually text/caption being edited.
+    if not message.text and not message.caption:
+        return
+
+    try:
+        await message.delete()
+        reply = await message.reply(
+            f"Security Bot 📢\n"
+            f"🚫 Hey {message.from_user.mention}, your message was removed.\n\n"
+            f"**Reason:** Edited message detected.\n"
+            f"Please keep the chat respectful.\n\n"
+            f"Note: This alert will delete in 60s.",
+            reply_markup=InlineKeyboardMarkup([
+                [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
+                 InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")]
+            ])
+        )
+        asyncio.create_task(auto_delete(reply))
+    except:
+        pass
 
 # --- 6. MULTILINGUAL SLANG & IMAGE FILTERS ---
 @Bot.on_message(filters.group & filters.photo)
@@ -126,12 +129,12 @@ async def image(bot, message):
     except:
         pass
 
-@Bot.on_message(filters.group & filters.text & ~filters.edited) # ONLY NEW MESSAGES
+@Bot.on_message(filters.group & filters.text)
 async def slang(bot, message):
+    if message.text.startswith("/"):
+        return
+        
     try:
-        if not message.text or message.text.startswith("/"):
-            return
-
         sentence = message.text
         clean_text = re.sub(r'[^\w\s]', ' ', sentence).lower()
         isslang = False

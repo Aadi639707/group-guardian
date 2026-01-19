@@ -49,7 +49,7 @@ async def auto_delete(message, delay=60):
     await asyncio.sleep(delay)
     try:
         await message.delete()
-    except Exception:
+    except:
         pass
 
 # --- 4. START COMMAND ---
@@ -76,25 +76,26 @@ async def start(bot, update):
     except:
         await update.reply_text(text=welcome_text, reply_markup=buttons)
 
-# --- 5. EDIT TRACKER (ADMINS INCLUDED) ---
+# --- 5. EDIT TRACKER (FIXED: ONLY FOR ACTUAL EDITS) ---
 @Bot.on_edited_message(filters.group)
 async def handle_edited(bot, message):
-    try:
-        await message.delete()
-        reply = await message.reply(
-            f"Security Bot 📢\n"
-            f"🚫 Hey {message.from_user.mention}, your message was removed.\n\n"
-            f"**Reason:** Edited message detected.\n"
-            f"Please keep the chat respectful.\n\n"
-            f"Note: This alert will delete in 60s.",
-            reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
-                 InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")]
-            ])
-        )
-        asyncio.create_task(auto_delete(reply))
-    except:
-        pass
+    if message.edit_date: # Extra check for real edit
+        try:
+            await message.delete()
+            reply = await message.reply(
+                f"Security Bot 📢\n"
+                f"🚫 Hey {message.from_user.mention}, your message was removed.\n\n"
+                f"**Reason:** Edited message detected.\n"
+                f"Please keep the chat respectful.\n\n"
+                f"Note: This alert will delete in 60s.",
+                reply_markup=InlineKeyboardMarkup([
+                    [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
+                     InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")]
+                ])
+            )
+            asyncio.create_task(auto_delete(reply))
+        except:
+            pass
 
 # --- 6. MULTILINGUAL SLANG & IMAGE FILTERS ---
 @Bot.on_message(filters.group & filters.photo)
@@ -125,11 +126,13 @@ async def image(bot, message):
     except:
         pass
 
-@Bot.on_message(filters.group & filters.text)
+@Bot.on_message(filters.group & filters.text & ~filters.edited) # ONLY NEW MESSAGES
 async def slang(bot, message):
     try:
+        if not message.text or message.text.startswith("/"):
+            return
+
         sentence = message.text
-        # Cleaning text to support Hindi and English better
         clean_text = re.sub(r'[^\w\s]', ' ', sentence).lower()
         isslang = False
         words = clean_text.split()

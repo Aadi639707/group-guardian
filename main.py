@@ -8,12 +8,10 @@ import asyncio
 from flask import Flask
 from threading import Thread
 
-# --- 1. WEB SERVER FOR RENDER ---
+# --- 1. WEB SERVER ---
 app = Flask(__name__)
-
 @app.route('/')
-def home():
-    return "Group Guardian Bot is active!"
+def home(): return "Bot is active!"
 
 def run_flask():
     port = int(os.environ.get("PORT", 10000))
@@ -28,6 +26,9 @@ def keep_alive():
 url = "https://api.safone.me/nsfw"
 SPOILER = config.SPOILER_MODE
 slangf = 'slang_words.txt'
+
+# Memory Cache for Reaction Protection
+msg_text_cache = {}
 
 try:
     with open(slangf, 'r', encoding='utf-8') as f:
@@ -45,46 +46,34 @@ Bot = Client(
 # --- 3. AUTO-DELETE HELPER ---
 async def auto_delete(message, delay=60):
     await asyncio.sleep(delay)
-    try:
-        await message.delete()
-    except:
-        pass
+    try: await message.delete()
+    except: pass
 
 # --- 4. START COMMAND ---
 @Bot.on_message(filters.private & filters.command("start"))
 async def start(bot, update):
-    welcome_pic = "https://telegra.ph/file/bc0d8e8784d009d7249a2.jpg" 
+    welcome_pic = "https://telegra.ph/file/bc0d8e8784d009d7249a2.jpg"
     welcome_text = (
         f"**Greetings {update.from_user.first_name}! 👋**\n\n"
-        "I am the **Group Guardian**. I protect your community from NSFW content, "
-        "multilingual abusive language, and edited messages.\n\n"
-        "**💡 Features:**\n"
-        "🛡️ **Slang & NSFW Filter:** High-speed detection.\n"
-        "🚫 **Edit Policy:** Edited messages are strictly prohibited.\n"
-        "⏳ **Auto-Clean:** Notifications self-destruct in 60 seconds."
+        "I am the **Group Guardian**. I protect your community from NSFW, Slang, and Edits.\n\n"
+        "**Note:** Admin messages are also monitored as per your request."
     )
     buttons = InlineKeyboardMarkup([
         [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
-         InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")],
-        [InlineKeyboardButton("🆘 Help", callback_data="help_cmds"),
-         InlineKeyboardButton("👨‍💻 Developer", url="https://t.me/GOJO63970")]
+         InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")]
     ])
-    try:
-        await update.reply_photo(photo=welcome_pic, caption=welcome_text, reply_markup=buttons)
-    except:
-        await update.reply_text(text=welcome_text, reply_markup=buttons)
+    try: await update.reply_photo(photo=welcome_pic, caption=welcome_text, reply_markup=buttons)
+    except: await update.reply_text(text=welcome_text, reply_markup=buttons)
 
-# --- 5. EDIT TRACKER (ULTIMATE FIX FOR REACTIONS) ---
+# --- 5. EDIT TRACKER (100% REACTION PROOF) ---
 @Bot.on_edited_message(filters.group)
 async def handle_edited(bot, message):
-    # Check 1: Agar message ke paas text ya caption nahi hai, toh skip (Reaction protection)
-    if not (message.text or message.caption):
-        return
+    msg_id = message.id
+    new_content = message.text or message.caption
 
-    # Check 2: Pyrogram's edit_date check. Reaction updates usually don't refresh this date
-    # like a manual text edit does.
-    if not message.edit_date:
-        return
+    # Agar reaction aaya hai toh text cache mein match karega
+    if msg_id in msg_text_cache and msg_text_cache[msg_id] == new_content:
+        return # Sirf reaction hai, ignore it
 
     try:
         await message.delete()
@@ -92,81 +81,47 @@ async def handle_edited(bot, message):
             f"Security Bot 📢\n"
             f"🚫 Hey {message.from_user.mention}, your message was removed.\n\n"
             f"**Reason:** Edited message detected.\n"
-            f"Please keep the chat respectful.\n\n"
-            f"Note: This alert will delete in 60s.",
+            f"Please keep the chat respectful.",
             reply_markup=InlineKeyboardMarkup([
-                [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
-                 InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")]
+                [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true")]
             ])
         )
         asyncio.create_task(auto_delete(reply))
-    except:
-        pass
+    except: pass
 
-# --- 6. MULTILINGUAL SLANG & IMAGE FILTERS ---
-@Bot.on_message(filters.group & filters.photo)
-async def image(bot, message):
-    try:
-        x = await message.download()
-        with open(x, "rb") as photo_file:
-            files = {"image": photo_file}
-            roi = requests.post(url, files=files)
-            data = roi.json()
-            
-        nsfw = data.get("data", {}).get("is_nsfw", False)
-        if nsfw:
-            await message.delete()
-            reply = await message.reply(
-                f"Security Bot 📢\n"
-                f"🚫 Hey {message.from_user.mention}, your message was removed.\n\n"
-                f"**Reason:** NSFW Content Detected.\n"
-                f"Please keep the chat respectful.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
-                     InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")]
-                ])
-            )
-            asyncio.create_task(auto_delete(reply))
-        if os.path.exists(x):
-            os.remove(x) 
-    except:
-        pass
+# --- 6. MULTILINGUAL SLANG & PHOTO FILTER ---
+@Bot.on_message(filters.group & (filters.text | filters.photo))
+async def main_filter(bot, message):
+    # Store message content in cache for reaction check later
+    msg_text_cache[message.id] = message.text or message.caption
+    
+    # 1. PHOTO/NSFW FILTER
+    if message.photo:
+        try:
+            x = await message.download()
+            with open(x, "rb") as photo_file:
+                roi = requests.post(url, files={"image": photo_file})
+                if roi.json().get("data", {}).get("is_nsfw", False):
+                    await message.delete()
+                    reply = await message.reply(f"Security Bot 📢\n🚫 Hey {message.from_user.mention}, NSFW is not allowed.")
+                    asyncio.create_task(auto_delete(reply))
+            if os.path.exists(x): os.remove(x)
+        except: pass
 
-@Bot.on_message(filters.group & filters.text)
-async def slang(bot, message):
-    if message.text.startswith("/"):
-        return
-        
-    try:
-        sentence = message.text
-        clean_text = re.sub(r'[^\w\s]', ' ', sentence).lower()
-        isslang = False
-        words = clean_text.split()
-        
-        for word in words:
-            if word in slang_words:
-                isslang = True
-                sentence = re.compile(re.escape(word), re.IGNORECASE).sub("****", sentence)
-        
-        if isslang:
-            await message.delete()
-            reply = await message.reply(
-                f"Security Bot 📢\n"
-                f"🚫 Hey {message.from_user.mention}, your message was removed.\n\n"
-                f"🔍 **Censored:** {sentence}\n\n"
-                f"Please keep the chat respectful.",
-                reply_markup=InlineKeyboardMarkup([
-                    [InlineKeyboardButton("➕ Add Me", url=f"https://t.me/{(await bot.get_me()).username}?startgroup=true"),
-                     InlineKeyboardButton("📢 Updates", url="https://t.me/Yonko_Crew")]
-                ])
-            )
-            asyncio.create_task(auto_delete(reply))
-    except:
-        pass
+    # 2. SLANG FILTER
+    elif message.text and not message.text.startswith("/"):
+        try:
+            sentence = message.text
+            clean_text = re.sub(r'[^\w\s]', ' ', sentence).lower()
+            words = clean_text.split()
+            if any(word in slang_words for word in words):
+                await message.delete()
+                reply = await message.reply(f"Security Bot 📢\n🚫 Hey {message.from_user.mention}, bad language detected.")
+                asyncio.create_task(auto_delete(reply))
+        except: pass
 
 # --- 7. RUN ---
 if __name__ == "__main__":
     keep_alive()
-    print("Group Guardian Bot is starting...")
     Bot.run()
-        
+    
